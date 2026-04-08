@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FitTasker Pro</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --bg-dark: #050505;
+            --bg-card: #121212;
+            --purple: #a020f0;
+            --purple-glow: #bf40ff;
+            --text: #ffffff;
+            --text-dim: #b3b3b3;
+            --nav-h: 65px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', -apple-system, sans-serif; }
+
+        body { background: var(--bg-dark); color: var(--text); padding-top: var(--nav-h); overflow-x: hidden; }
+
+        /* Navbar */
+        .navbar {
+            position: fixed; top: 0; width: 100%; height: var(--nav-h);
+            background: rgba(18, 18, 18, 0.95); backdrop-filter: blur(10px);
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 20px; border-bottom: 1px solid #222; z-index: 1000;
+        }
+        .logo { font-size: 22px; font-weight: 900; color: var(--purple); text-transform: uppercase; }
+        .nav-items span { margin-left: 20px; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--text-dim); }
+        .nav-items span.active { color: var(--purple); }
+        .nav-items .profile-icon { font-size: 20px; margin-left: 10px; }
+        #profile-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 350px; z-index: 2000; }
+        #history-section { display: none; }
+        .history-item { background: #1a1a1a; padding: 12px; border-radius: 12px; margin-bottom: 8px; }
+
+        .container { width: 100%; max-width: 500px; margin: 0 auto; padding: 20px; }
+
+        .card {
+            background: var(--bg-card); border-radius: 20px; padding: 20px; margin-bottom: 20px;
+            border: 1px solid #1f1f1f; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        h2 { font-size: 18px; margin-bottom: 15px; font-weight: 700; color: var(--purple); }
+
+        /* Auth */
+        .auth-view { display: none; }
+        .auth-view.active { display: block; }
+        input, select {
+            width: 100%; background: #1a1a1a; border: 1px solid #333; color: white;
+            padding: 14px; border-radius: 12px; margin-bottom: 12px; outline: none;
+        }
+        input:focus { border-color: var(--purple); }
+
+        .btn {
+            width: 100%; padding: 14px; border-radius: 12px; border: none; font-weight: 700;
+            cursor: pointer; transition: 0.3s; margin-bottom: 10px;
+        }
+        .btn-primary { background: var(--purple); color: white; }
+        .btn-outline { background: transparent; border: 1px solid var(--purple); color: var(--purple); }
+
+        /* Tracker */
+        #map { height: 280px; border-radius: 15px; margin-bottom: 15px; border: 1px solid #333; }
+        .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-item { background: #1a1a1a; padding: 15px 5px; border-radius: 12px; text-align: center; }
+        .val { display: block; font-size: 20px; font-weight: 800; color: white; }
+        .lbl { font-size: 10px; color: var(--text-dim); text-transform: uppercase; }
+
+        /* To Do */
+        .todo-input { display: flex; gap: 10px; margin-bottom: 15px; }
+        .todo-input input { margin-bottom: 0; }
+        .todo-list { list-style: none; }
+        .todo-item {
+            background: #1a1a1a; padding: 12px 15px; border-radius: 12px; margin-bottom: 8px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .del-todo { color: #ff4444; font-weight: bold; cursor: pointer; }
+
+        /* Sharing */
+        .share-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .btn-ig { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); color: white; }
+        .btn-snap { background: #FFFC00; color: black; }
+
+        #canvas-wrap { display: none; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="logo">FitTasker</div>
+<div class="nav-items">
+            <span onclick="toggleView('main-app')" class="active">Home</span>
+            <span onclick="toggleView('history-section')">History</span>
+            <span onclick="showProfile()" class="profile-icon">👤</span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div id="auth-login" class="card auth-view">
+            <h2>Sign In</h2>
+            <form action="/auth" method="POST">
+                <input type="hidden" name="action" value="login">
+                <input type="email" name="email" placeholder="Email" required>
+                <input type="password" name="password" placeholder="Password" required>
+                <button type="submit" class="btn btn-primary">Login</button>
+            </form>
+            <button class="btn btn-outline" onclick="toggleView('auth-reg')">Create Account</button>
+        </div>
+
+        <div id="auth-reg" class="card auth-view">
+            <h2>Register</h2>
+            <form action="/auth" method="POST">
+                <input type="hidden" name="action" value="register">
+                <input type="text" name="name" placeholder="Name" required>
+                <input type="email" name="email" placeholder="Email" required>
+                <select name="region" required>
+                    <option value="" disabled selected>India Region</option>
+                    <option value="North">North India</option>
+                    <option value="South">South India</option>
+                    <option value="East">East India</option>
+                    <option value="West">West India</option>
+                    <option value="Central">Central India</option>
+                </select>
+                <button type="submit" class="btn btn-primary">Join Now</button>
+            </form>
+        </div>
+
+        <div id="main-app" class="auth-view active">
+            <div class="card">
+                <h2>Real-time Tracking</h2>
+                <div id="map"></div>
+                <div class="stats">
+                    <div class="stat-item"><span class="val" id="s-steps">0</span><span class="lbl">Steps</span></div>
+                    <div class="stat-item"><span class="val" id="s-dist">0.00</span><span class="lbl">Km</span></div>
+                    <div class="stat-item"><span class="val" id="s-pace">0:00</span><span class="lbl">Pace</span></div>
+                </div>
+                <button class="btn btn-primary" id="track-trigger" onclick="handleTracking()">Start Session</button>
+                <div id="gps-status" style="font-size:11px; color:var(--text-dim); margin-top:8px; padding:8px; background:#1a1a1a; border-radius:8px;">
+                    GPS Status: <span id="gps-coords">-</span> | Accuracy: <span id="gps-acc">-</span>m
+                </div>
+            </div>
+
+            <!-- History Section -->
+            <div id="history-section" class="card" style="display:none;">
+                <h2>Training History</h2>
+                <ul id="history-list"></ul>
+                <button class="btn btn-outline" onclick="loadHistory()" style="width:100%; margin-top:10px;">Refresh</button>
+            </div>
+
+            <!-- Profile Modal -->
+<div id="profile-modal" class="card" style="position:absolute; top:70px; right:20px; width:280px; z-index:1001; display:none; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+                <h2 style="margin-bottom:5px;">Profile</h2>
+                <div style="text-align:center;">
+                    <img id="profile-avatar" src="https://ui-avatars.com/api/?name=Guest&background=a020f0&color=fff&size=100&font-size=0.6" style="width:100px;height:100px;border-radius:50%;margin-bottom:5px;border:3px solid var(--purple);">
+                    <span onclick="editProfileImg()" style="font-size:20px; cursor:pointer; color:var(--purple); margin-left:5px;" title="Edit Photo">✏️</span>
+                    <input type="file" id="img-upload" accept="image/*" style="display:none;">
+                </div>
+                <p><strong id="user-name">Guest</strong></p>
+                <p>Region: <strong id="user-region">Unknown</strong></p>
+                <button class="btn" onclick="updateProfile()" style="width:100%; margin-bottom:10px;">Update Profile</button>
+                <button class="btn btn-outline" onclick="hideProfile()" style="width:100%;">Close</button>
+            </div>
+
+            <div id="modal-backdrop" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000;" onclick="hideProfile()"></div>
+
+            <div class="card">
+                <h2>Fitness Tasks</h2>
+                <div class="todo-input">
+                    <input type="text" id="t-input" placeholder="e.g. 50 Pushups">
+                    <button class="btn btn-primary" style="width: 80px;" onclick="addTodo()">+</button>
+                </div>
+                <ul class="todo-list" id="t-list"></ul>
+            </div>
+
+            <div class="card">
+                <h2>Generate Spotify-Style Wrap</h2>
+                <input type="file" id="bg-upload" accept="image/*" style="display: none;" onchange="loadBg(event)">
+                <button class="btn btn-outline" onclick="document.getElementById('bg-upload').click()">🖼️ Add Custom Background</button>
+                <div class="share-actions">
+                    <button class="btn btn-ig" onclick="share('instagram')">Instagram</button>
+                    <button class="btn btn-snap" onclick="share('snapchat')">Snapchat</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="canvas-wrap"><canvas id="out-canvas" width="1080" height="1920"></canvas></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let map, userMarker, routePath = [], watchId = null;
+        let isTracking = false, distance = 0, steps = 0, seconds = 0, timerId = null;
+        let customBg = null, lastPos = null;
+
+        // UI Toggle
+        function toggleView(id) {
+            document.querySelectorAll('.auth-view').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.nav-items span').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            event.target.classList.add('active');
+            if (id === 'main-app' && map) setTimeout(() => map.invalidateSize(), 200);
+        }
+
+        // Profile functions
+        async function showProfile() {
+            document.getElementById('modal-backdrop').style.display = 'block';
+            document.getElementById('profile-modal').style.display = 'block';
+            try {
+                const res = await fetch('/api/profile');
+                const data = await res.json();
+                document.getElementById('profile-avatar').src = data.img || `https://ui-avatars.com/api/?name=${data.name}&background=a020f0&color=fff&size=100`;
+                document.getElementById('user-name').textContent = data.name;
+                document.getElementById('user-region').textContent = data.region;
+            } catch(e) {
+                console.log('Profile load:', e);
+            }
+        }
+
+        function hideProfile() {
+            document.getElementById('modal-backdrop').style.display = 'none';
+            document.getElementById('profile-modal').style.display = 'none';
+        }
+
+        async function updateProfile() {
+            const imgFile = document.getElementById('img-upload').files[0];
+            if (imgFile) {
+                const formData = new FormData();
+                formData.append('img', imgFile.name); // Base64 or URL
+                await fetch('/api/profile', { method: 'POST', body: formData });
+            }
+            hideProfile();
+        }
+
+        // History functions
+        async function loadHistory() {
+            try {
+                const res = await fetch('/api/history');
+                const data = await res.json();
+                const list = document.getElementById('history-list');
+                list.innerHTML = '';
+                data.activities.forEach(activity => {
+                    const li = document.createElement('li');
+                    li.className = 'history-item';
+                    li.innerHTML = `<strong>${new Date(activity.timestamp).toLocaleString()}</strong><br>
+                        Dist: ${activity.distance.toFixed(2)}km | Steps: ${activity.steps.toLocaleString()} | Pace: ${activity.pace}`;
+                    list.appendChild(li);
+                });
+            } catch(e) {
+                console.log('History load:', e);
+            }
+        }
+
+        // Save on stop tracking
+        // Add to handleTracking stop block
+
+        // Map Init
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([20.5937, 78.9629], 5);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+            
+            userMarker = L.circleMarker([0,0], { radius: 8, color: '#a020f0', fillOpacity: 1 }).addTo(map);
+            
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(p => {
+                    const pos = [p.coords.latitude, p.coords.longitude];
+                    document.getElementById('gps-coords').textContent = `${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}`;
+                    document.getElementById('gps-acc').textContent = p.coords.accuracy.toFixed(0);
+                    document.getElementById('gps-status').style.color = p.coords.accuracy < 10 ? 'lime' : 'orange';
+                    map.setView(pos, 15);
+                    userMarker.setLatLng(pos);
+                    lastPos = pos;
+                }, e => {
+                    document.getElementById('gps-status').textContent = 'GPS Error: ' + e.message;
+                });
+            }
+        }
+        initMap();
+
+        // Tracking Logic
+        function handleTracking() {
+            const btn = document.getElementById('track-trigger');
+            if (!isTracking) {
+                isTracking = true;
+                btn.innerText = "Stop & Save";
+                btn.style.background = "#ff4444";
+                
+                routePath = [];
+                distance = 0; steps = 0; seconds = 0;
+                
+                timerId = setInterval(() => seconds++, 1000);
+                
+                watchId = navigator.geolocation.watchPosition(p => {
+                    const pos = [p.coords.latitude, p.coords.longitude];
+                    if (lastPos) {
+                        const d = calculateDist(lastPos[0], lastPos[1], pos[0], pos[1]);
+                        distance += d;
+                        steps += Math.round(d * 1312); // ~1312 steps per km
+                    }
+                    lastPos = pos;
+                    routePath.push(pos);
+                    
+                    userMarker.setLatLng(pos);
+                    L.polyline(routePath, { color: '#a020f0', weight: 5 }).addTo(map);
+                    map.panTo(pos);
+                    
+                    updateUI();
+                }, null, { enableHighAccuracy: true });
+            } else {
+                isTracking = false;
+                btn.innerText = "Start Session";
+                btn.style.background = "var(--purple)";
+                clearInterval(timerId);
+                navigator.geolocation.clearWatch(watchId);
+                
+                // Save activity history
+                if (distance > 0) {
+                    const activity = {
+                        timestamp: Date.now(),
+                        distance: distance,
+                        steps: steps,
+                        pace: document.getElementById('s-pace').innerText,
+                        duration: seconds
+                    };
+                    fetch('/api/history', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(activity)
+                    }).then(() => loadHistory());
+                }
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('s-dist').innerText = distance.toFixed(2);
+            document.getElementById('s-steps').innerText = steps;
+            const paceMin = distance > 0 ? Math.floor((seconds/60)/distance) : 0;
+            const paceSec = distance > 0 ? Math.floor(((seconds/60)/distance - paceMin) * 60) : 0;
+            document.getElementById('s-pace').innerText = `${paceMin}:${paceSec.toString().padStart(2,'0')}`;
+        }
+
+        function calculateDist(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2-lat1)*Math.PI/180;
+            const dLon = (lon2-lon1)*Math.PI/180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        // To Do
+        function addTodo() {
+            const input = document.getElementById('t-input');
+            if (!input.value) return;
+            const li = document.createElement('li');
+            li.className = 'todo-item';
+            li.innerHTML = `<span>${input.value}</span><span class="del-todo" onclick="this.parentElement.remove()">✕</span>`;
+            document.getElementById('t-list').appendChild(li);
+            input.value = "";
+        }
+
+        // Spotify Style Sharing
+        function loadBg(e) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => customBg = img;
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(e.target.files[0]);
+        }
+
+        async function share(platform) {
+            const canvas = document.getElementById('out-canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Draw Background
+            if (customBg) {
+                const scale = Math.max(canvas.width / customBg.width, canvas.height / customBg.height);
+                ctx.drawImage(customBg, 0, 0, customBg.width * scale, customBg.height * scale);
+            } else {
+                const grad = ctx.createLinearGradient(0, 0, 1080, 1920);
+                grad.addColorStop(0, '#050505'); grad.addColorStop(1, '#a020f0');
+                ctx.fillStyle = grad; ctx.fillRect(0, 0, 1080, 1920);
+            }
+            
+            ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(0,0,1080,1920);
+
+            // Draw Simplified Route
+            if (routePath.length > 1) {
+                ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 10; ctx.lineJoin = "round"; ctx.beginPath();
+                const minLat = Math.min(...routePath.map(p => p[0])), maxLat = Math.max(...routePath.map(p => p[0]));
+                const minLon = Math.min(...routePath.map(p => p[1])), maxLon = Math.max(...routePath.map(p => p[1]));
+                routePath.forEach((p, i) => {
+                    const x = 200 + ((p[1] - minLon) / (maxLon - minLon || 1)) * 680;
+                    const y = 400 + ((maxLat - p[0]) / (maxLat - minLat || 1)) * 600;
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            }
+
+            // Text Rendering
+            ctx.fillStyle = "white"; ctx.textAlign = "center";
+            ctx.font = "900 100px Inter"; ctx.fillText("DAILY WRAP", 540, 250);
+            
+            ctx.font = "800 250px Inter"; ctx.fillText(distance.toFixed(2), 540, 1200);
+            ctx.font = "600 60px Inter"; ctx.fillStyle = "#bf40ff"; ctx.fillText("KILOMETERS COMPLETED", 540, 1280);
+
+            ctx.fillStyle = "white"; ctx.font = "700 80px Inter";
+            ctx.fillText(`${steps} STEPS`, 540, 1450);
+            ctx.fillText(`${document.getElementById('s-pace').innerText} PACE`, 540, 1550);
+
+            ctx.font = "900 50px Inter"; ctx.fillText("FITTASKER PRO", 540, 1850);
+
+            canvas.toBlob(async (blob) => {
+                const file = new File([blob], 'my_wrap.png', { type: 'image/png' });
+                if (navigator.share) {
+                    await navigator.share({ files: [file], title: 'My Fitness Wrap', text: 'Crushing goals on FitTasker!' });
+                } else {
+                    const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
+                    link.download = 'wrap.png'; link.click();
+                }
+            });
+        }
+    </script>
+</body>
+</html>
